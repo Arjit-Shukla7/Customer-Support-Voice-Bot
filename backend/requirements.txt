@@ -1,0 +1,10 @@
+fastapi 
+uvicorn 
+websockets 
+pydantic 
+langchain-core 
+langgraph 
+langchain-groq 
+cartesia 
+deepgram-sdk
+python-dotenv
