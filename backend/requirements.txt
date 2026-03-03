@@ -8,3 +8,4 @@ langchain-groq
 cartesia 
 deepgram-sdk
 python-dotenv
+sqlmodel
