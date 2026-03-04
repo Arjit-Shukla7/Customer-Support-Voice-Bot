@@ -14,7 +14,7 @@ export const useVoiceAgent = () => {
             audioStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
 
             // 2. Open WebSocket connection to FastAPI
-            socket.current = new WebSocket('ws://localhost:8000/ws');
+            socket.current = new WebSocket('ws://localhost:8000/ws/1');
 
             socket.current.onopen = () => {
                 setStatus('Connected');

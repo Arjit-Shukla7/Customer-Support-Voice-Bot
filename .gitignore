@@ -27,6 +27,7 @@ build/
 backend/.venv/
 backend/venv/
 backend/env/
+healthcare.db
 
 # Environment Variables
 .env

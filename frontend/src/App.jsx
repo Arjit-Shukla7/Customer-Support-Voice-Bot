@@ -1,32 +1,24 @@
 import React from 'react';
-import { useVoiceAgent } from './hooks/useVoiceAgent';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import CallPage from './CallPage';
+import AdminPage from './AdminPage';
 
 function App() {
-  const { isRecording, status, startCall, stopCall } = useVoiceAgent();
-
   return (
-    <div style={{ backgroundColor: '#0A0A0B', color: 'white', height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
-      <h1>Healthcare Voice Agent</h1>
-      <p style={{ color: status === 'Connected' ? '#4ade80' : '#f87171' }}>
-        Status: {status}
-      </p>
+    <Router>
+      <div className="relative font-outfit">
+        {/* Minimalist Floating Nav */}
+        <nav className="fixed top-6 right-8 z-50 flex gap-4 p-2 bg-white/30 backdrop-blur-md rounded-full border border-white/20 shadow-sm">
+          <Link to="/" className="px-4 py-2 rounded-full hover:bg-white/50 transition-all text-sm font-semibold text-gray-800">Call Agent</Link>
+          <Link to="/admin" className="px-4 py-2 rounded-full hover:bg-white/50 transition-all text-sm font-semibold text-gray-800">Admin Panel</Link>
+        </nav>
 
-      <button
-        onClick={isRecording ? stopCall : startCall}
-        style={{
-          padding: '12px 24px',
-          fontSize: '16px',
-          backgroundColor: isRecording ? '#ef4444' : '#3b82f6',
-          color: 'white',
-          border: 'none',
-          borderRadius: '8px',
-          cursor: 'pointer',
-          marginTop: '20px'
-        }}
-      >
-        {isRecording ? 'End Call' : 'Start Call'}
-      </button>
-    </div>
+        <Routes>
+          <Route path="/" element={<CallPage />} />
+          <Route path="/admin" element={<AdminPage />} />
+        </Routes>
+      </div>
+    </Router>
   );
 }
 
