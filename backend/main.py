@@ -1,6 +1,7 @@
 import asyncio
 import os
 import uuid
+import json
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -81,15 +82,13 @@ async def voice_agent_endpoint(websocket: WebSocket, patient_id: int):
 
                 current_ai_task = None
                 user_transcript_buffer = ""
-                
-                # THE FIX 1: Track if we already flushed the frontend this turn
                 turn_interrupted = False 
 
                 # --- THE TTS GENERATION PIPELINE ---
                 async def generate_and_speak(text_prompt: str, is_initial=False):
                     nonlocal turn_interrupted
-                    turn_interrupted = False # Reset the flush flag for the new generation
-                    audio_task = None # Initialize to prevent UnboundLocalError on cancellation
+                    turn_interrupted = False 
+                    audio_task = None 
                     
                     print(f"\n🧠 AI Thinking about: {text_prompt[:40]}...")
                     
@@ -99,7 +98,11 @@ async def voice_agent_endpoint(websocket: WebSocket, patient_id: int):
                         async with AsyncExitStack() as stack:
                             cartesia_ws = None
                             ctx = None
+                            
+                            model_run_id = None
+                            display_text = ""
                             text_buffer = ""
+                            
                             print("Agent: ", end="", flush=True)
 
                             async for event in langgraph_app.astream_events(
@@ -108,38 +111,52 @@ async def voice_agent_endpoint(websocket: WebSocket, patient_id: int):
                                 version="v2"
                             ):
                                 if event["event"] == "on_chat_model_stream":
-                                    chunk = event["data"]["chunk"]
-                                    if chunk.content:
-                                        clean_chunk = chunk.content.replace('\n', ' ').replace('*', '')
-                                        print(clean_chunk, end="", flush=True)
-                                        text_buffer += clean_chunk
-                                        
-                                        if any(p in text_buffer for p in ['.', '?', '!']):
-                                            if cartesia_ws is None:
-                                                cartesia_ws = await stack.enter_async_context(
-                                                    cartesia_client.tts.websocket_connect()
-                                                )
-                                                ctx = cartesia_ws.context(
-                                                    model_id="sonic-3",
-                                                    voice={"mode": "id", "id": "694f9389-aac1-45b6-b726-9d9369183238"},
-                                                    output_format={"container": "raw", "encoding": "pcm_s16le", "sample_rate": 24000} 
-                                                )
+                                    # Fix: Lock onto the first run_id to avoid "Double Vision" text
+                                    if model_run_id is None:
+                                        model_run_id = event["run_id"]
+                                    
+                                    if event["run_id"] == model_run_id:
+                                        chunk = event["data"]["chunk"]
+                                        if chunk.content:
+                                            # Clean formatting and strip accidental "Agent:" prefixes
+                                            clean_chunk = chunk.content.replace('\n', ' ').replace('*', '').replace('Agent: ', '')
+                                            print(clean_chunk, end="", flush=True)
+                                            
+                                            text_buffer += clean_chunk
+                                            display_text += clean_chunk 
+                                            
+                                            # Broadcast the flawless paragraph to React
+                                            await websocket.send_text(json.dumps({
+                                                "type": "ai_text", 
+                                                "text": display_text
+                                            }))
+                                            
+                                            # Sentence Buffer: Push to Cartesia on punctuation
+                                            if any(p in text_buffer for p in ['.', '?', '!']):
+                                                if cartesia_ws is None:
+                                                    cartesia_ws = await stack.enter_async_context(
+                                                        cartesia_client.tts.websocket_connect()
+                                                    )
+                                                    ctx = cartesia_ws.context(
+                                                        model_id="sonic-3",
+                                                        voice={"mode": "id", "id": "694f9389-aac1-45b6-b726-9d9369183238"},
+                                                        output_format={"container": "raw", "encoding": "pcm_s16le", "sample_rate": 24000} 
+                                                    )
 
-                                                async def pipe_audio_to_react():
-                                                    try:
-                                                        async for output in ctx.receive():
-                                                            if output.type == "chunk" and output.audio:
-                                                                await websocket.send_bytes(output.audio)
-                                                            elif output.type == "error":
-                                                                print(f"\n🔴 Cartesia Error: {output.error}")
-                                                    except asyncio.CancelledError:
-                                                        pass 
-                                                        
-                                                audio_task = asyncio.create_task(pipe_audio_to_react())
+                                                    async def pipe_audio_to_react():
+                                                        try:
+                                                            async for output in ctx.receive():
+                                                                if output.type == "chunk" and output.audio:
+                                                                    await websocket.send_bytes(output.audio)
+                                                        except asyncio.CancelledError:
+                                                            pass 
+                                                            
+                                                    audio_task = asyncio.create_task(pipe_audio_to_react())
 
-                                            await ctx.push(text_buffer)
-                                            text_buffer = ""
+                                                await ctx.push(text_buffer)
+                                                text_buffer = ""
                             
+                            # Flush any remaining text at the very end
                             if text_buffer.strip():
                                 if cartesia_ws is None:
                                     cartesia_ws = await stack.enter_async_context(
@@ -161,9 +178,11 @@ async def voice_agent_endpoint(websocket: WebSocket, patient_id: int):
 
                                 await ctx.push(text_buffer)
                             
+                            # Signal completion
                             if ctx:
                                 await ctx.no_more_inputs()
-                                await audio_task
+                                if audio_task:
+                                    await audio_task
                                 print("\n✅ Response Complete.")
                                 
                     except asyncio.CancelledError:
@@ -182,13 +201,18 @@ async def voice_agent_endpoint(websocket: WebSocket, patient_id: int):
                         transcript = message.channel.alternatives[0].transcript
                         
                         if transcript.strip():
-                            # THE FIX 2: Send CLEAR instantly to wipe React's buffered audio queue!
+                            # Send live user text to frontend
+                            await websocket.send_text(json.dumps({
+                                "type": "user_text", 
+                                "text": user_transcript_buffer + transcript
+                            }))
+
+                            # Barge-in: Kill audio instantly if user makes a sound
                             if not turn_interrupted:
                                 turn_interrupted = True
                                 print("\n💥 BARGE-IN: Flushing frontend audio buffer...")
                                 await websocket.send_text("CLEAR")
                                 
-                                # Also kill the backend brain if it's still generating
                                 if current_ai_task and not current_ai_task.done():
                                     current_ai_task.cancel()
                                     current_ai_task = None

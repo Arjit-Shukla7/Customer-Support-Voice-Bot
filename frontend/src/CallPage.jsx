@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 
 const PATIENTS = [
     { id: 1, name: "John Doe", problem: "Wisdom Tooth Extraction", example: '"My left side is really swollen and the ibuprofen isn\'t helping."' },
@@ -14,6 +14,9 @@ const CallPage = () => {
     const [agentVolume, setAgentVolume] = useState(0);
     const [userVolume, setUserVolume] = useState(0);
 
+    const [transcript, setTranscript] = useState({ text: "", speaker: "" });
+    const textScrollRef = useRef(null);
+
     const wsRef = useRef(null);
     const audioCtxRef = useRef(null);
     const nextPlayTimeRef = useRef(0);
@@ -24,9 +27,17 @@ const CallPage = () => {
     const agentAnalyserRef = useRef(null);
     const userAnalyserRef = useRef(null);
 
+    // Auto-scroll the transcript to the bottom when new text arrives
+    useEffect(() => {
+        if (textScrollRef.current) {
+            textScrollRef.current.scrollTop = textScrollRef.current.scrollHeight;
+        }
+    }, [transcript.text]);
+
     const startCall = async () => {
         if (!selectedPatient) return;
         setIsCalling(true);
+        setTranscript({ text: "Connecting...", speaker: "ai" });
 
         const AudioContext = window.AudioContext || window.webkitAudioContext;
         audioCtxRef.current = new AudioContext({ sampleRate: 24000 });
@@ -40,7 +51,6 @@ const CallPage = () => {
         wsRef.current.binaryType = "arraybuffer";
 
         wsRef.current.onopen = async () => {
-            console.log(`🟢 Connected to Voice Agent for ${selectedPatient.name}`);
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
@@ -63,24 +73,32 @@ const CallPage = () => {
         };
 
         wsRef.current.onmessage = async (event) => {
+            if (typeof event.data === "string") {
+                if (event.data === "CLEAR") {
+                    activeSources.current.forEach(source => {
+                        try { source.stop(); source.disconnect(); } catch (e) { }
+                    });
+                    activeSources.current = [];
 
-            // === BARGE-IN LOGIC ===
-            // If the backend sends us our "CLEAR" string, stop the speakers instantly!
-            if (typeof event.data === "string" && event.data === "CLEAR") {
-                console.log("🛑 Interrupting Audio...");
-                activeSources.current.forEach(source => {
-                    try { source.stop(); } catch (e) { }
-                });
-                activeSources.current = [];
+                    setTranscript({ text: "", speaker: "" });
 
-                // Reset the scheduling timeline so the next sentence starts right away
-                if (audioCtxRef.current) {
-                    nextPlayTimeRef.current = audioCtxRef.current.currentTime;
+                    if (audioCtxRef.current) {
+                        nextPlayTimeRef.current = audioCtxRef.current.currentTime;
+                    }
+                    return;
                 }
-                return; // Exit the function so we don't try to process text as audio bytes
+
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === "ai_text") {
+                        setTranscript({ text: data.text, speaker: "ai" });
+                    } else if (data.type === "user_text") {
+                        setTranscript({ text: data.text, speaker: "user" });
+                    }
+                } catch (e) { }
+                return;
             }
 
-            // --- Normal Audio Processing ---
             const arrayBuffer = event.data;
             const int16Array = new Int16Array(arrayBuffer);
             const float32Array = new Float32Array(int16Array.length);
@@ -93,12 +111,10 @@ const CallPage = () => {
             source.buffer = audioBuffer;
             source.connect(agentAnalyserRef.current);
 
-            // Clean up the source from our active list when it finishes playing naturally
             source.onended = () => {
                 activeSources.current = activeSources.current.filter(s => s !== source);
             };
 
-            // Add it to our active list so we can kill it if interrupted
             activeSources.current.push(source);
 
             const currentTime = audioCtxRef.current.currentTime;
@@ -116,6 +132,7 @@ const CallPage = () => {
         if (animationRef.current) cancelAnimationFrame(animationRef.current);
         setAgentVolume(0);
         setUserVolume(0);
+        setTranscript({ text: "", speaker: "" });
     };
 
     const visualize = () => {
@@ -135,7 +152,6 @@ const CallPage = () => {
         updateVolumes();
     };
 
-    // --- Background Orbs Component (Now darker green shades) ---
     const BackgroundOrbs = () => (
         <div className="fixed inset-0 overflow-hidden pointer-events-none z-0 bg-flowing-green">
             <div className="absolute top-0 left-0 w-[50vw] h-[50vw] bg-forestgreen/20 rounded-full blur-[100px] animate-orb-g-1 mix-blend-screen" />
@@ -148,14 +164,11 @@ const CallPage = () => {
         return (
             <div className="relative min-h-screen text-gray-900 p-12 selection:bg-teal-100/40" style={{ fontFamily: '"Outfit", sans-serif' }}>
                 <BackgroundOrbs />
-
                 <div className="relative z-10 max-w-6xl mx-auto">
-                    {/* Centered Headers with Outfit font mapping */}
                     <div className="mb-16 flex flex-col items-center justify-center text-center">
                         <h1 className="text-5xl font-semibold tracking-tight text-gray-900">Select a Persona</h1>
                         <p className="text-gray-600 mt-4 text-xl font-normal">Choose a patient to test the dynamic context injection.</p>
                     </div>
-
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {PATIENTS.map((p) => (
                             <div
@@ -163,9 +176,7 @@ const CallPage = () => {
                                 onClick={() => setSelectedPatient(p)}
                                 className="group relative flex flex-col p-6 cursor-pointer rounded-2xl bg-white/60 backdrop-blur-xl border border-white/40 overflow-hidden transition-all duration-500 hover:scale-[1.02] hover:bg-white hover:border-teal-100 hover:shadow-[0_20px_40px_rgba(20,184,166,0.1)]"
                             >
-                                {/* Subtle Hover Gradient Bloom (matching flowing background) */}
                                 <div className="absolute inset-0 bg-gradient-to-br from-teal-100/40 via-transparent to-green-50/40 opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
-
                                 <div className="relative z-10">
                                     <div className="flex items-center justify-between mb-4">
                                         <h2 className="text-2xl font-semibold text-gray-900">{p.name}</h2>
@@ -191,46 +202,74 @@ const CallPage = () => {
     }
 
     return (
-        <div className="relative flex flex-col items-center justify-center min-h-screen text-gray-900 selection:bg-teal-100/40" style={{ fontFamily: '"Outfit", sans-serif' }}>
+        <div className="relative flex flex-col items-center justify-center min-h-screen text-gray-900 selection:bg-teal-100/40 overflow-hidden" style={{ fontFamily: '"Outfit", sans-serif' }}>
             <BackgroundOrbs />
 
-            {!isCalling && (
-                <button
-                    onClick={() => setSelectedPatient(null)}
-                    className="absolute top-8 left-8 text-gray-500 hover:text-gray-900 font-semibold transition-colors flex items-center gap-2 z-10 px-4 py-2 rounded-full bg-white/50 backdrop-blur-sm border border-white/10 shadow-sm"
-                >
-                    <span>←</span> Back to Personas
-                </button>
-            )}
-
-            <div className="text-center mb-16 z-10 p-8 bg-white/70 backdrop-blur-md rounded-3xl border border-white/60 shadow-[0_20px_40px_rgba(0,0,0,0.03)]">
+            <div className={`text-center z-10 p-8 bg-white/70 backdrop-blur-md rounded-3xl border border-white/60 shadow-[0_20px_40px_rgba(0,0,0,0.03)] transition-all duration-700 ${isCalling ? 'absolute top-8 scale-75 opacity-80' : 'mb-16'}`}>
                 <h1 className="text-4xl font-semibold tracking-tight text-gray-900">Healthcare Support</h1>
                 <p className="text-gray-600 mt-3 font-normal text-lg">Connecting to: <span className="text-black font-semibold">{selectedPatient.name}</span></p>
                 <p className="text-teal-600 font-semibold mt-1">{selectedPatient.problem}</p>
             </div>
 
-            <div className="relative flex items-center justify-center w-64 h-64 mb-16 z-10">
-                <div
-                    className="absolute rounded-full bg-gradient-to-tr from-teal-400 to-emerald-400 blur-2xl transition-all duration-75 ease-out mix-blend-multiply"
-                    style={{ width: `${100 + agentVolume * 1.5}px`, height: `${100 + agentVolume * 1.5}px`, opacity: isCalling ? 0.6 + (agentVolume / 100) : 0 }}
-                />
-                <div
-                    className="absolute rounded-full bg-gradient-to-tr from-blue-400 to-cyan-300 blur-2xl transition-all duration-75 ease-out mix-blend-multiply"
-                    style={{ width: `${80 + userVolume * 1.5}px`, height: `${80 + userVolume * 1.5}px`, opacity: isCalling ? 0.3 + (userVolume / 100) : 0, transform: 'translateX(40px) translateY(20px)' }}
-                />
-                <div className={`w-24 h-24 rounded-full bg-white backdrop-blur-md border border-white/10 transition-all duration-500 shadow-[0_10px_30px_rgba(0,0,0,0.08)] ${isCalling ? 'scale-100 opacity-100' : 'scale-75 opacity-0'}`} />
-            </div>
+            {/* The Fading & Scrolling Transcript Box */}
+            {isCalling && (
+                <div className="relative z-10 w-full max-w-4xl px-8 h-[55vh] flex flex-col items-center justify-center pointer-events-auto">
+                    <div
+                        ref={textScrollRef}
+                        className="w-full max-h-full overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] scroll-smooth py-16"
+                        style={{
+                            maskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)',
+                            WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%)'
+                        }}
+                    >
+                        <p
+                            className={`text-2xl md:text-3xl lg:text-4xl font-medium leading-relaxed text-center transition-all duration-500 ease-out
+                ${transcript.text ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}
+                ${transcript.speaker === 'ai' ? 'text-teal-900 drop-shadow-sm' : 'text-gray-500 italic'}
+              `}
+                        >
+                            {transcript.text || "Listening..."}
+                        </p>
+                    </div>
+                </div>
+            )}
 
-            <div className="z-10 flex gap-6">
+            {/* Control Buttons */}
+            <div className={`z-10 flex gap-6 transition-all duration-500 ${isCalling ? 'absolute bottom-12' : ''}`}>
                 {!isCalling ? (
                     <button onClick={startCall} className="px-8 py-4 rounded-full bg-gray-900 text-white font-semibold hover:scale-105 transition-all shadow-[0_10px_30px_rgba(0,0,0,0.15)] text-lg">
                         Start Call
                     </button>
                 ) : (
-                    <button onClick={endCall} className="px-8 py-4 rounded-full bg-white text-red-500 border border-red-100 hover:bg-red-50 hover:border-red-200 transition-all shadow-md font-semibold text-lg">
+                    <button onClick={endCall} className="px-8 py-4 rounded-full bg-white text-red-500 border border-red-100 hover:bg-red-50 hover:border-red-200 transition-all shadow-md font-semibold text-lg z-20 relative">
                         End Call
                     </button>
                 )}
+            </div>
+
+            {/* FIX: True "Sunrise" Radial Breathing Waveforms (Zero Hard Edges) */}
+            <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+
+                {/* AI Speaking Waveform (Teal) */}
+                <div
+                    className="absolute bottom-0 left-1/2 w-[120vw] h-[120vw] rounded-full mix-blend-multiply blur-[100px] transition-transform duration-100 ease-out"
+                    style={{
+                        backgroundColor: 'rgba(20, 184, 166, 0.4)',
+                        transform: `translateX(-50%) translateY(65%) scale(${isCalling && transcript.speaker === 'ai' ? 0.7 + (agentVolume / 80) : 0})`,
+                        opacity: isCalling && transcript.speaker === 'ai' ? 1 : 0
+                    }}
+                />
+
+                {/* User Speaking Waveform (Gray) */}
+                <div
+                    className="absolute bottom-0 left-1/2 w-[120vw] h-[120vw] rounded-full mix-blend-multiply blur-[100px] transition-transform duration-100 ease-out"
+                    style={{
+                        backgroundColor: 'rgba(148, 163, 184, 0.4)',
+                        transform: `translateX(-50%) translateY(65%) scale(${isCalling && transcript.speaker === 'user' ? 0.7 + (userVolume / 80) : 0})`,
+                        opacity: isCalling && transcript.speaker === 'user' ? 1 : 0
+                    }}
+                />
+
             </div>
         </div>
     );

@@ -1,24 +1,35 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import React, { useState } from 'react';
 import CallPage from './CallPage';
 import AdminPage from './AdminPage';
 
 function App() {
-  return (
-    <Router>
-      <div className="relative font-outfit">
-        {/* Minimalist Floating Nav */}
-        <nav className="fixed top-6 right-8 z-50 flex gap-4 p-2 bg-white/30 backdrop-blur-md rounded-full border border-white/20 shadow-sm">
-          <Link to="/" className="px-4 py-2 rounded-full hover:bg-white/50 transition-all text-sm font-semibold text-gray-800">Call Agent</Link>
-          <Link to="/admin" className="px-4 py-2 rounded-full hover:bg-white/50 transition-all text-sm font-semibold text-gray-800">Admin Panel</Link>
-        </nav>
+  const [currentView, setCurrentView] = useState('caller'); // 'caller' or 'admin'
 
-        <Routes>
-          <Route path="/" element={<CallPage />} />
-          <Route path="/admin" element={<AdminPage />} />
-        </Routes>
+  return (
+    <>
+      {/* Top Navigation Bar */}
+      <div className="fixed top-0 right-0 p-6 z-50 flex gap-4">
+        <button
+          onClick={() => setCurrentView('caller')}
+          className={`px-4 py-2 rounded-full text-sm font-semibold transition-all backdrop-blur-md ${currentView === 'caller' ? 'bg-white shadow-sm text-teal-800' : 'bg-white/40 text-gray-600 hover:bg-white/60'}`}
+        >
+          Call Agent
+        </button>
+        <button
+          onClick={() => setCurrentView('admin')}
+          className={`px-4 py-2 rounded-full text-sm font-semibold transition-all backdrop-blur-md ${currentView === 'admin' ? 'bg-white shadow-sm text-teal-800' : 'bg-white/40 text-gray-600 hover:bg-white/60'}`}
+        >
+          Admin Panel
+        </button>
       </div>
-    </Router>
+
+      {/* Render the selected view */}
+      {currentView === 'caller' ? (
+        <CallPage />
+      ) : (
+        <AdminPage onNavigateBack={() => setCurrentView('caller')} />
+      )}
+    </>
   );
 }
 
