@@ -27,7 +27,6 @@ const CallPage = () => {
     const agentAnalyserRef = useRef(null);
     const userAnalyserRef = useRef(null);
 
-    // Auto-scroll the transcript to the bottom when new text arrives
     useEffect(() => {
         if (textScrollRef.current) {
             textScrollRef.current.scrollTop = textScrollRef.current.scrollHeight;

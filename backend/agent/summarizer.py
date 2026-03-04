@@ -6,13 +6,11 @@ from pydantic import BaseModel, Field
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, AIMessage, AnyMessage
 from sqlmodel import Session
-
-# Import our database setup from Lego 5
 from core.database import engine, CallRecord, Patient
 
 load_dotenv()
 
-# 1. Define the Strict JSON Schema for the Admin Dashboard
+# Define the Strict JSON Schema for the Admin Dashboard
 class CallSummary(BaseModel):
     sentiment: str = Field(description="The emotional state of the patient (e.g., 'Positive', 'Frustrated', 'In Pain', 'Neutral'). Keep it to 1-2 words.")
     summary: str = Field(description="A concise 2-3 sentence summary of the call's outcome.")
@@ -21,7 +19,6 @@ class CallSummary(BaseModel):
 class PostCallAnalyst:
     def __init__(self):
         # We can use a slightly larger or standard model for summarization since it's post-call (latency isn't as critical)
-        # But llama3-8b-8192 is still blazing fast and handles structured JSON perfectly.
         self.llm = ChatGroq(
             api_key=os.getenv("GROQ_API_KEY"),
             model_name="llama-3.1-8b-instant", 
@@ -45,10 +42,10 @@ class PostCallAnalyst:
     def analyze_and_save(self, messages: List[AnyMessage], patient_id: int) -> CallRecord:
         """Runs the analysis and saves the result to SQLite."""
         
-        # 1. Generate the raw text transcript
+        # Generate the raw text transcript
         raw_transcript = self._format_transcript(messages)
         
-        # 2. Prompt Groq to extract the structured data
+        # Prompt Groq to extract the structured data
         print("🧠 Analyzing call transcript...")
         analysis_prompt = f"""
         Analyze the following healthcare support call transcript.
@@ -61,7 +58,7 @@ class PostCallAnalyst:
         # The output is automatically parsed into our CallSummary Pydantic object!
         result: CallSummary = self.structured_llm.invoke(analysis_prompt)
         
-        # 3. Save to the Database
+        # Save to the Database
         with Session(engine) as session:
             # We convert the action_items list to a JSON string so it stores nicely in SQLite
             action_items_str = json.dumps(result.action_items)

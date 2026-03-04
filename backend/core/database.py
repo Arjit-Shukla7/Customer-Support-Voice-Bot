@@ -2,7 +2,7 @@ from sqlmodel import SQLModel, Field, Session, create_engine, select
 from typing import Optional
 from datetime import datetime, timezone
 
-# 1. Define the Patient Table
+# Define the Patient Table
 class Patient(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
@@ -10,7 +10,7 @@ class Patient(SQLModel, table=True):
     medical_history: str  
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-# 2. Define the Call Record Table
+# Define the Call Record Table
 class CallRecord(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     patient_id: int = Field(foreign_key="patient.id")
@@ -19,7 +19,7 @@ class CallRecord(SQLModel, table=True):
     sentiment: Optional[str] = None 
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-# 3. Setup the SQLite Engine
+# Setup the SQLite Engine
 sqlite_file_name = "healthcare.db"
 sqlite_url = f"sqlite:///{sqlite_file_name}"
 engine = create_engine(sqlite_url, echo=False)
@@ -36,7 +36,7 @@ if __name__ == "__main__":
     print("🧱 Building the Memory Bank...")
     create_db_and_tables()
     
-    # 5 Diverse Patients to test the AI's adaptability
+    # Diverse Patients to test the AI's adaptability
     seed_patients = [
         Patient(
             name="John Doe",

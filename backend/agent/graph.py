@@ -9,10 +9,8 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
 
-# Load API keys
 load_dotenv()
 
-# 1. Define the Strictly-Typed State
 # 'messages' uses the add_messages reducer.
 # 'patient_context' and 'appointment_booked' use the default "override" reducer.
 class AgentState(TypedDict):
@@ -20,8 +18,6 @@ class AgentState(TypedDict):
     patient_context: str
     appointment_booked: bool
 
-# 2. Initialize the LLM
-# llama3-8b-8192 is currently the gold standard for Groq voice latency
 llm = ChatGroq(
     api_key=os.getenv("GROQ_API_KEY"),
     model_name="llama-3.1-8b-instant", 
@@ -29,7 +25,7 @@ llm = ChatGroq(
     streaming=True
 )
 
-# 3. Define the Core Node
+
 def call_model(state: AgentState):
     messages = state["messages"]
     patient_context = state.get("patient_context", "No specific context provided.")
@@ -50,13 +46,13 @@ Patient Context: {patient_context}
     # Return the new message to be appended to the state
     return {"messages": [response]}
 
-# 4. Build the Graph
+
 workflow = StateGraph(AgentState)
 workflow.add_node("agent", call_model)
 workflow.add_edge(START, "agent")
 workflow.add_edge("agent", END)
 
-# 5. Attach Memory and Compile
+
 memory = MemorySaver()
 app = workflow.compile(checkpointer=memory)
 

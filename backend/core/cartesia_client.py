@@ -2,8 +2,6 @@ import os
 import asyncio
 from dotenv import load_dotenv
 from cartesia import AsyncCartesia
-
-# Load the API key from the .env file
 load_dotenv()
 
 class CartesiaTTS:
