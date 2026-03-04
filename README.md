@@ -9,6 +9,13 @@
 
 A full-duplex, ultra-low latency voice AI agent designed for healthcare triage and patient follow-ups. This project features dynamic context injection, sub-second conversational latency, true interruption (barge-in) handling, and a live React dashboard with dynamic audio waveforms.
 
+## 🎥 Video Demo
+
+
+
+https://github.com/user-attachments/assets/51160783-61e2-49f2-9e6c-f9bfa1bd3cef
+
+
 ## ✨ Key Features
 
 * **Ultra-Low Latency Streaming:** Achieves near-human response times by piping Deepgram STT transcripts into a LangGraph/Groq (Llama 3.1) brain, and streaming the output directly to Cartesia Sonic TTS via WebSockets.
